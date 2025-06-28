@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Виджет</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: transparent;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        overflow: hidden;
+      }
+
+      .svg-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .music-svg {
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+      }
+
+      .album-circle {
+        transition: all 0.3s ease;
+      }
+
+      .album-circle:hover {
+        transform: scale(1.05);
+      }
+
+      .text-element {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        fill: #ffffff;
+      }
+
+      .title-text {
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .artist-text {
+        font-size: 12px;
+        fill: #cccccc;
+      }
+
+      .status-dot {
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+      }
+
+      .fade-in {
+        animation: fadeIn 0.5s ease-out;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="svg-container">
+      <svg class="music-svg" width="300" height="60" viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg">
+        <!-- Фон -->
+        <defs>
+          <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#2f2f2f;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1" />
+          </linearGradient>
+          <clipPath id="albumClip">
+            <circle cx="25" cy="30" r="20"/>
+          </clipPath>
+        </defs>
+
+        <!-- Основной фон -->
+        <rect x="0" y="0" width="300" height="60" rx="8" fill="url(#bgGradient)"/>
+
+        <!-- Обложка альбома -->
+        <circle cx="25" cy="30" r="20" fill="#333" class="album-circle" id="albumCircle"/>
+        <image 
+          id="albumImage" 
+          x="5" y="10" 
+          width="40" height="40" 
+          href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiByeD0iMjAiIGZpbGw9IiMzMzMiLz4KPHBhdGggZD0iTTE1IDEyTDI1IDIwTDE1IDI4VjEyWiIgZmlsbD0iIzY2NiIvPgo8L3N2Zz4K"
+          clip-path="url(#albumClip)"
+        />
+
+        <!-- Текст трека -->
+        <text x="55" y="25" class="text-element title-text" id="trackTitle">Загрузка...</text>
+        <text x="55" y="40" class="text-element artist-text" id="trackArtist">Яндекс.Музыка</text>
+
+        <!-- Индикатор статуса -->
+        <circle cx="280" cy="30" r="4" fill="#4CAF50" class="status-dot" id="statusDot"/>
+
+        <!-- Анимация загрузки -->
+        <circle cx="280" cy="30" r="4" fill="none" stroke="#4CAF50" stroke-width="1" opacity="0.3">
+          <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/>
+        </circle>
+      </svg>
+    </div>
+
+    <script>
+      // API конфигурация
+      const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySUQiOiI1ODM2MTMzNjg5NjM4MjU2NjQiLCJpYXQiOjE3NTEwNDc4Mjh9.M5d1F962Sh7bK8uotGmCLXiegDZqYc4mcYrQ0cH-HFU";
+      const API_BASE_URL = "https://ru-node-1.pulsesync.dev/api/v1";
+
+      // Элементы SVG
+      const albumImage = document.getElementById('albumImage');
+      const trackTitle = document.getElementById('trackTitle');
+      const trackArtist = document.getElementById('trackArtist');
+      const statusDot = document.getElementById('statusDot');
+      const albumCircle = document.getElementById('albumCircle');
+
+      let currentTrackId = null;
+      let isPlaying = false;
+
+      // API функции
+      async function fetchTrackStatus() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/track/status`, {
+            headers: {
+              'accept': '*/*',
+              'authorization': `Bearer ${API_KEY}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          return data;
+        } catch (error) {
+          console.error('Ошибка API:', error);
+          return null;
+        }
+      }
+
+      // Обновление SVG виджета
+      function updateSVGWidget(track) {
+        if (!track) return;
+
+        const newTrackId = track.realId;
+        const newIsPlaying = track.status === 'playing';
+
+        // Обновляем только если трек изменился
+        if (newTrackId !== currentTrackId) {
+          currentTrackId = newTrackId;
+          
+          // Анимация смены трека
+          albumCircle.classList.add('fade-in');
+          setTimeout(() => albumCircle.classList.remove('fade-in'), 500);
+
+          // Обновляем информацию о треке
+          trackTitle.textContent = track.title || 'Неизвестный трек';
+          trackArtist.textContent = track.artists?.[0]?.name || 'Неизвестный исполнитель';
+
+          // Обновляем обложку
+          if (track.albumArt) {
+            albumImage.style.opacity = '0';
+            const tempImg = new Image();
+            tempImg.onload = () => {
+              albumImage.href.baseVal = track.albumArt;
+              albumImage.style.opacity = '1';
+            };
+            tempImg.onerror = () => {
+              albumImage.style.opacity = '1';
+            };
+            tempImg.src = track.albumArt;
+          }
+        }
+
+        // Обновляем статус воспроизведения
+        if (newIsPlaying !== isPlaying) {
+          isPlaying = newIsPlaying;
+          statusDot.setAttribute('fill', isPlaying ? '#4CAF50' : '#FF9800');
+        }
+      }
+
+      // Основной цикл обновления
+      async function updateTrackInfo() {
+        try {
+          const data = await fetchTrackStatus();
+          if (data?.ok && data.track) {
+            updateSVGWidget(data.track);
+          } else {
+            // Показываем статус ошибки
+            statusDot.setAttribute('fill', '#f44336');
+            trackTitle.textContent = 'Ошибка подключения';
+            trackArtist.textContent = 'Проверьте настройки';
+          }
+        } catch (error) {
+          console.error('Ошибка обновления:', error);
+        }
+      }
+
+      // Запуск виджета
+      updateTrackInfo();
+      setInterval(updateTrackInfo, 15000);
+
+      // Обработка ошибок изображений
+      albumImage.addEventListener('error', () => {
+        albumImage.href.baseVal = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiByeD0iMjAiIGZpbGw9IiMzMzMiLz4KPHBhdGggZD0iTTE1IDEyTDI1IDIwTDE1IDI4VjEyWiIgZmlsbD0iIzY2NiIvPgo8L3N2Zz4K";
+      });
+    </script>
+  </body>
+</html> 
